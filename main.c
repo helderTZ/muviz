@@ -160,8 +160,13 @@ int main(int argc, char** argv) {
 
             BeginDrawing();
                 ClearBackground((Color){0x18, 0x18, 0x18, 0});
-                DrawText("No music file supplied.", w/4, h/3, 40, GRAY);
-                DrawText("Drag and drop to start playing.", w/4-100, h/3+40, 40, GRAY);
+                const char* text = "No music file supplied.";
+                const int fontSize = 40;
+                int textWidth = MeasureText(text, fontSize);
+                DrawText(text, w/2 - textWidth/2, h/3, fontSize, GRAY);
+                text = "Drag and drop to start playing.";
+                textWidth = MeasureText(text, fontSize);
+                DrawText(text, w/2 - textWidth/2, h/3 + fontSize, fontSize, GRAY);
             EndDrawing();
         }
     }
