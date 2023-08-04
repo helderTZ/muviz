@@ -6,9 +6,23 @@
 
 #include <raylib.h>
 
+// TODO: move everthing here
+// typedef struct {
+//     const char* filename = NULL;
+// } State;
+
 #define N (1<<15) // close to 20kHz
 float in[N];
 float complex out[N];
+
+// Updating *out* every other frame instead of every frame
+// makes the animation a bit more smooth
+unsigned int frame_counter = 0;
+unsigned int smooth_factor = 2;
+
+float time_played = 0.0f;
+
+char filename[100] = {0};
 
 typedef struct {
     float left;
@@ -16,6 +30,8 @@ typedef struct {
 } Frame;
 
 #define FFT(out, in, n) fft(out, in, n, 1)
+
+#define BACKGROUND_COLOR (Color){0x18, 0x18, 0x18, 0}
 
 void fft(float complex out[], float in[], size_t n, size_t stride) {
     if (n <= 1) {
@@ -49,7 +65,7 @@ void audio_callback(void* bufferData, unsigned int frames) {
 
     for (size_t i = 0; i < frames; ++i) {
         memmove(in, in + 1, (N - 1) * sizeof(in[0]));
-        in[N - 1] = framesData[i].left;
+        in[N - 1] = (framesData[i].left + framesData[i].right)/2;
     }
 }
 
@@ -67,16 +83,62 @@ float max_amplitude(float complex cs[], size_t n) {
     return max_amp;
 }
 
-void draw_freqs() {
+void draw_text() {
 
     int w = GetScreenWidth();
     int h = GetScreenHeight();
 
     BeginDrawing();
         ClearBackground((Color){0x18, 0x18, 0x18, 0});
+        const char* text = "No music file supplied.";
+        const int fontSize = 40;
+        int textWidth = MeasureText(text, fontSize);
+        DrawText(text, w/2 - textWidth/2, h/3, fontSize, GRAY);
+        text = "Drag and drop to start playing.";
+        textWidth = MeasureText(text, fontSize);
+        DrawText(text, w/2 - textWidth/2, h/3 + fontSize, fontSize, GRAY);
+    EndDrawing();
+}
 
-        FFT(out, in, N);
-        // fftshift(out, N);
+void draw_progress_bar(Music music) {
+
+    int w = GetScreenWidth();
+    int h = GetScreenHeight();
+
+    time_played = GetMusicTimePlayed(music)/GetMusicTimeLength(music);
+
+    if (time_played > 1.0f) {
+        time_played = 1.0f;
+    }
+
+    float bar_w = w/4*2;
+    float bar_h = 20;
+    float bar_x = w/4;
+    float bar_y = h/8*7;
+    DrawRectangle(bar_x, bar_y, bar_w, bar_h, LIGHTGRAY);
+    DrawRectangle(bar_x, bar_y, (int)(time_played*bar_w), bar_h, MAROON);
+    DrawRectangleLines(bar_x, bar_y, bar_w, bar_h, GRAY);
+
+    const int font_size = 20;
+    const char *text = "Now playing";
+    int text_width = MeasureText(text, font_size);
+    int filename_width = MeasureText(filename, font_size);
+    DrawText(text,     w/2 - text_width/2,     bar_y-bar_h-font_size-10, font_size, GRAY);
+    DrawText(filename, w/2 - filename_width/2, bar_y-bar_h-10,           font_size, GRAY);
+}
+
+void draw_freqs(Music music) {
+
+    int w = GetScreenWidth();
+    int h = GetScreenHeight();
+
+    BeginDrawing();
+        ClearBackground(BACKGROUND_COLOR);
+
+        if (frame_counter++ % smooth_factor == 0) {
+            FFT(out, in, N);
+            // fftshift(out, N);
+        }
 
         // calculate number of bins to have a logarithmic freq scale
         float step = 1.059463094359; // from: https://pages.mtu.edu/~suits/NoteFreqCalcs.html
@@ -98,10 +160,14 @@ void draw_freqs() {
             }
             acc /= (size_t)f1 - (size_t)f + 1;
             float t = acc/max_amp;
-            DrawRectangle(m*cell_w, h/2 - h/2*t, cell_w, h/2*t, RED);
-            DrawRectangle(m*cell_w, h/2        , cell_w, h/2*t, RED);
+            float cell_h = h/2*t > 1 ? h/2*t : 1;
+            DrawRectangle(m*cell_w, h/2 - cell_h, cell_w, cell_h, RED);
+            DrawRectangle(m*cell_w, h/2         , cell_w, cell_h, RED);
             m++;
         }
+
+        draw_progress_bar(music);
+
     EndDrawing();
 }
 
@@ -116,11 +182,13 @@ int main(int argc, char** argv) {
     Music music = {0};
 
     if (argc == 2) {
+        strncpy(filename, argv[1], 100);
         music = LoadMusicStream(argv[1]);
         music.looping = false;
         AttachAudioStreamProcessor(music.stream, audio_callback);
         SetMusicVolume(music, 0.5);
         PlayMusicStream(music);
+        time_played = 0.0f;
     }
 
     SetTargetFPS(60);
@@ -132,11 +200,13 @@ int main(int argc, char** argv) {
             StopMusicStream(music);
             UnloadMusicStream(music);
             music = LoadMusicStream(droppedFiles.paths[0]);
+            strncpy(filename, droppedFiles.paths[0], 100);
             music.looping = false;
             AttachAudioStreamProcessor(music.stream, audio_callback);
             SetMusicVolume(music, 0.5);
             PlayMusicStream(music);
             UnloadDroppedFiles(droppedFiles);
+            time_played = 0.0f;
         }
 
         if (IsMusicReady(music)) {
@@ -151,23 +221,12 @@ int main(int argc, char** argv) {
                 }
             }
 
-            draw_freqs();
+            draw_freqs(music);
 
         } else {
 
-            int w = GetScreenWidth();
-            int h = GetScreenHeight();
+            draw_text();
 
-            BeginDrawing();
-                ClearBackground((Color){0x18, 0x18, 0x18, 0});
-                const char* text = "No music file supplied.";
-                const int fontSize = 40;
-                int textWidth = MeasureText(text, fontSize);
-                DrawText(text, w/2 - textWidth/2, h/3, fontSize, GRAY);
-                text = "Drag and drop to start playing.";
-                textWidth = MeasureText(text, fontSize);
-                DrawText(text, w/2 - textWidth/2, h/3 + fontSize, fontSize, GRAY);
-            EndDrawing();
         }
     }
 

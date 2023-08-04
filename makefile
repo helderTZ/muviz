@@ -1,5 +1,5 @@
 CC=clang
-CFLAGS=-Wall -Wextra `pkg-config --cflags raylib`
+CFLAGS=-Wall -Wextra `pkg-config --cflags raylib` -O3
 # LIBS=`pkg-config --libs raylib` -lm -pthread -ldl -lglfw
 LIBS=-lm -pthread -ldl -lglfw
 
