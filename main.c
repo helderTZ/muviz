@@ -1,195 +1,124 @@
-#include <complex.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <string.h>
-#include <math.h>
+#include <dlfcn.h>
 
-#include <raylib.h>
+#include "plugin.h"
 
-// TODO: move everthing here
-// typedef struct {
-//     const char* filename = NULL;
-// } State;
+typedef State* (*plugin_init_t)(void);
+typedef void   (*plugin_deinit_t)(State*);
+typedef void   (*plugin_pre_reload_t)(State*, audio_callback_t);
+typedef void   (*plugin_post_reload_t)(State*, audio_callback_t);
+typedef void   (*draw_progress_bar_t)(State*);
+typedef void   (*draw_text_t)(void);
+typedef void   (*draw_freqs_t)(State*);
 
-#define N (1<<15) // close to 20kHz
-float in[N];
-float complex out[N];
+plugin_init_t        plugin_init = NULL;
+plugin_deinit_t      plugin_deinit = NULL;
+plugin_pre_reload_t  plugin_pre_reload = NULL;
+plugin_post_reload_t plugin_post_reload = NULL;
+draw_progress_bar_t  draw_progress_bar = NULL;
+draw_text_t          draw_text = NULL;
+draw_freqs_t         draw_freqs = NULL;
 
-// Updating *out* every other frame instead of every frame
-// makes the animation a bit more smooth
-unsigned int frame_counter = 0;
-unsigned int smooth_factor = 2;
-
-float time_played = 0.0f;
-
-char filename[100] = {0};
-
-typedef struct {
-    float left;
-    float right;
-} Frame;
-
-#define FFT(out, in, n) fft(out, in, n, 1)
-
-#define BACKGROUND_COLOR (Color){0x18, 0x18, 0x18, 0}
-
-void fft(float complex out[], float in[], size_t n, size_t stride) {
-    if (n <= 1) {
-        out[0] = in[0];
-        return;
-    }
-
-    fft(out,       in,          n/2, stride*2);
-    fft(out + n/2, in + stride, n/2, stride*2);
-
-    for (size_t k = 0; k < n/2; ++k) {
-        float t = (float)k/n;
-        float complex v = cexp(-2*I*PI*t) * out[k + n/2];
-        float complex e = out[k];
-        out[k      ] = e + v;
-        out[k + n/2] = e - v;
-    }
-}
-
-void fftshift(float complex z[], size_t n) {
-    for (size_t i = 0; i < n/2; ++i) {
-        float complex temp = z[i];
-        z[i      ] = z[i + n/2];
-        z[i + n/2] = temp;
-    }
-}
+State *G_state = NULL;
 
 void audio_callback(void* bufferData, unsigned int frames) {
-
     Frame* framesData = bufferData;
+    State* state = G_state;
 
     for (size_t i = 0; i < frames; ++i) {
-        memmove(in, in + 1, (N - 1) * sizeof(in[0]));
-        in[N - 1] = (framesData[i].left + framesData[i].right)/2;
+        memmove(state->in, state->in + 1, (N - 1) * sizeof(state->in[0]));
+        state->in[N - 1] = (framesData[i].left + framesData[i].right)/2;
     }
 }
 
-float amplitude(float complex c) {
-    return sqrt(creal(c)*creal(c) + cimag(c)*cimag(c));
-}
-
-float max_amplitude(float complex cs[], size_t n) {
-    float max_amp = 0.0f;
-    for (size_t i = 0; i < n; ++i) {
-        float amp = amplitude(cs[i]);
-        if (max_amp < amp) max_amp = amp;
+void* load_plugin(const char* libplugin_filename) {
+    void *libplugin = dlopen(libplugin_filename, RTLD_NOW);
+    if (libplugin == NULL) {
+        fprintf(stderr, "ERROR: could not load %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
     }
 
-    return max_amp;
-}
-
-void draw_text() {
-
-    int w = GetScreenWidth();
-    int h = GetScreenHeight();
-
-    BeginDrawing();
-        ClearBackground((Color){0x18, 0x18, 0x18, 0});
-        const char* text = "No music file supplied.";
-        const int fontSize = 40;
-        int textWidth = MeasureText(text, fontSize);
-        DrawText(text, w/2 - textWidth/2, h/3, fontSize, GRAY);
-        text = "Drag and drop to start playing.";
-        textWidth = MeasureText(text, fontSize);
-        DrawText(text, w/2 - textWidth/2, h/3 + fontSize, fontSize, GRAY);
-    EndDrawing();
-}
-
-void draw_progress_bar(Music music) {
-
-    int w = GetScreenWidth();
-    int h = GetScreenHeight();
-
-    time_played = GetMusicTimePlayed(music)/GetMusicTimeLength(music);
-
-    if (time_played > 1.0f) {
-        time_played = 1.0f;
+    plugin_init = dlsym(libplugin, "plugin_init");
+    if (plugin_init == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"plugin_init\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
     }
 
-    float bar_w = w/4*2;
-    float bar_h = 20;
-    float bar_x = w/4;
-    float bar_y = h/8*7;
-    DrawRectangle(bar_x, bar_y, bar_w, bar_h, LIGHTGRAY);
-    DrawRectangle(bar_x, bar_y, (int)(time_played*bar_w), bar_h, MAROON);
-    DrawRectangleLines(bar_x, bar_y, bar_w, bar_h, GRAY);
+    plugin_deinit = dlsym(libplugin, "plugin_deinit");
+    if (plugin_deinit == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"plugin_deinit\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
+    }
 
-    const int font_size = 20;
-    const char *text = "Now playing";
-    int text_width = MeasureText(text, font_size);
-    int filename_width = MeasureText(filename, font_size);
-    DrawText(text,     w/2 - text_width/2,     bar_y-bar_h-font_size-10, font_size, GRAY);
-    DrawText(filename, w/2 - filename_width/2, bar_y-bar_h-10,           font_size, GRAY);
+    plugin_pre_reload = dlsym(libplugin, "plugin_pre_reload");
+    if (plugin_pre_reload == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"plugin_pre_reload\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
+    }
+
+    plugin_post_reload = dlsym(libplugin, "plugin_post_reload");
+    if (plugin_post_reload == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"plugin_post_reload\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
+    }
+
+    draw_progress_bar = dlsym(libplugin, "draw_progress_bar");
+    if (draw_progress_bar == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"draw_progress_bar\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
+    }
+
+    draw_text = dlsym(libplugin, "draw_text");
+    if (draw_text == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"draw_text\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
+    }
+
+    draw_freqs = dlsym(libplugin, "draw_freqs");
+    if (draw_freqs == NULL) {
+        fprintf(stderr, "ERROR: Could not find symbol \"draw_freqs\" in %s: %s\n",
+            libplugin_filename, dlerror());
+        exit(EXIT_FAILURE);
+    }
+
+    return libplugin;
 }
 
-void draw_freqs(Music music) {
-
-    int w = GetScreenWidth();
-    int h = GetScreenHeight();
-
-    BeginDrawing();
-        ClearBackground(BACKGROUND_COLOR);
-
-        if (frame_counter++ % smooth_factor == 0) {
-            FFT(out, in, N);
-            // fftshift(out, N);
-        }
-
-        // calculate number of bins to have a logarithmic freq scale
-        float step = 1.059463094359; // from: https://pages.mtu.edu/~suits/NoteFreqCalcs.html
-        size_t m = 0; // number of bins
-        for (float f = 20.0f; (size_t)f < N; f *= step) {
-            m++;
-        }
-
-        float cell_w = (float)w/m;
-        float max_amp = max_amplitude(out, N);
-
-        m = 0;
-        for (float f = 20.0f; (size_t)f < N; f *= step) {
-            float f1 = f*step;
-            float acc = 0.0f;
-            // accumulate the freqs in the bin (between current f and f*step)
-            for (size_t q = (size_t) f; q < N && q < (size_t) f1; ++q) {
-                acc += amplitude(out[q]);
-            }
-            acc /= (size_t)f1 - (size_t)f + 1;
-            float t = acc/max_amp;
-            float cell_h = h/2*t > 1 ? h/2*t : 1;
-            DrawRectangle(m*cell_w, h/2 - cell_h, cell_w, cell_h, RED);
-            DrawRectangle(m*cell_w, h/2         , cell_w, cell_h, RED);
-            m++;
-        }
-
-        draw_progress_bar(music);
-
-    EndDrawing();
+void* reload_plugin(void* handle, const char* libplugin_filename) {
+    dlclose(handle);
+    return load_plugin(libplugin_filename);
 }
 
 int main(int argc, char** argv) {
 
-    const int screenWidth = 800;
-    const int scrrenHeight = 450;
+    const char *libplugin_filename = "./libplugin.so";
+    void* libplugin = load_plugin(libplugin_filename);
 
-    InitWindow(screenWidth, scrrenHeight, "MUVIZ");
-    InitAudioDevice();
-
-    Music music = {0};
+    State *state = plugin_init();
+    G_state = state;
 
     if (argc == 2) {
-        strncpy(filename, argv[1], 100);
-        music = LoadMusicStream(argv[1]);
-        music.looping = false;
-        AttachAudioStreamProcessor(music.stream, audio_callback);
-        SetMusicVolume(music, 0.5);
-        PlayMusicStream(music);
-        time_played = 0.0f;
+        strncpy(state->filename, argv[1], 100);
+        state->music = LoadMusicStream(argv[1]);
+        state->music.looping = false;
+        AttachAudioStreamProcessor(state->music.stream, audio_callback);
+        SetMusicVolume(state->music, 0.5);
+        PlayMusicStream(state->music);
+        state->time_played = 0.0f;
     }
+
+    const int screenWidth = 800;
+    const int screenHeight = 450;
+
+    InitWindow(screenWidth, screenHeight, "MUVIZ");
+    InitAudioDevice();
 
     SetTargetFPS(60);
 
@@ -197,31 +126,41 @@ int main(int argc, char** argv) {
 
         if (IsFileDropped()) {
             FilePathList droppedFiles = LoadDroppedFiles();
-            StopMusicStream(music);
-            UnloadMusicStream(music);
-            music = LoadMusicStream(droppedFiles.paths[0]);
-            strncpy(filename, droppedFiles.paths[0], 100);
-            music.looping = false;
-            AttachAudioStreamProcessor(music.stream, audio_callback);
-            SetMusicVolume(music, 0.5);
-            PlayMusicStream(music);
+            StopMusicStream(state->music);
+            UnloadMusicStream(state->music);
+            state->music = LoadMusicStream(droppedFiles.paths[0]);
+            strncpy(state->filename, droppedFiles.paths[0], 100);
+            state->music.looping = false;
+            AttachAudioStreamProcessor(state->music.stream, audio_callback);
+            SetMusicVolume(state->music, 0.5);
+            PlayMusicStream(state->music);
             UnloadDroppedFiles(droppedFiles);
-            time_played = 0.0f;
+            state->time_played = 0.0f;
         }
 
-        if (IsMusicReady(music)) {
+        if (IsMusicReady(state->music)) {
 
-            UpdateMusicStream(music);
+            UpdateMusicStream(state->music);
 
             if (IsKeyPressed(KEY_SPACE)) {
-                if (IsMusicStreamPlaying(music)) {
-                    PauseMusicStream(music);
+                if (IsMusicStreamPlaying(state->music)) {
+                    PauseMusicStream(state->music);
                 } else {
-                    ResumeMusicStream(music);
+                    ResumeMusicStream(state->music);
                 }
             }
 
-            draw_freqs(music);
+            if (IsKeyPressed(KEY_R)) {
+                plugin_pre_reload(state, audio_callback);
+                libplugin = reload_plugin(libplugin, libplugin_filename);
+                if (libplugin == NULL) {
+                    fprintf(stderr, "ERROR: Failed to hot-reload plugin.\n");
+                    break;
+                }
+                plugin_post_reload(state, audio_callback);
+            }
+
+            draw_freqs(state);
 
         } else {
 
@@ -230,9 +169,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    UnloadMusicStream(music);
-    CloseAudioDevice();
+    plugin_deinit(state);
     CloseWindow();
 
-    return 0;
+    return EXIT_SUCCESS;
 }

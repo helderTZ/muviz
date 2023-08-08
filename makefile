@@ -1,14 +1,17 @@
 CC=clang
 CFLAGS=-Wall -Wextra `pkg-config --cflags raylib` -O3
-# LIBS=`pkg-config --libs raylib` -lm -pthread -ldl -lglfw
-LIBS=-lm -pthread -ldl -lglfw
+LIBS=`pkg-config --libs raylib` -lm -pthread -ldl -lglfw
 
-all: muviz
+all: muviz libplugin.so
 
 muviz: main.c
-	${CC} -o $@ $^ /usr/local/lib/libraylib.a ${CFLAGS} ${LIBS}
+	${CC} -o $@ $< ${CFLAGS} ${LIBS}
+
+libplugin.so: plugin.c
+	${CC} -o $@ $^ -shared -fPIC ${CFLAGS} ${LIBS}
 
 .PHONY: clean
 
 clean:
-	if [ -f muviz ]; then rm muviz; fi
+	if [ -f muviz        ]; then rm muviz; fi
+	if [ -f libplugin.so ]; then rm libplugin.so; fi
