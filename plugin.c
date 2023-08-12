@@ -4,6 +4,11 @@
 // makes the animation a bit more smooth
 #define SMOOTH_FACTOR 1
 
+// Factor applied to the height of the frequency bars
+// 1 means height of the window
+// 2 means half the window, and so on
+#define SCALE_FACTOR 3
+
 void fft(float complex out[], float in[], size_t n, size_t stride);
 void fftshift(float complex z[], size_t n);
 float amplitude(float complex c);
@@ -53,9 +58,9 @@ void hann(float out[], float in[], size_t n) {
 float amplitude(float complex c) {
     float a = creal(c);
     float b = cimag(c);
-    return sqrt(a*a + b*b);
+    // return sqrt(a*a + b*b);
     // return (a*a + b*b);
-    // return logf(sqrt(a*a + b*b));
+    return logf(sqrt(a*a + b*b));
 }
 
 float max_amplitude(float complex cs[], size_t n) {
@@ -160,7 +165,7 @@ void draw_freqs(State *state) {
                 float b = amplitude(state->out[q]);
                 if (a < b) a = b;
             }
-            float t = a/max_amp;
+            float t = a/max_amp/SCALE_FACTOR;
             float cell_h = h/2*t > 1 ? h/2*t : 1;
             DrawSimRect(m*cell_w, h/2, cell_w, cell_h, BLUE);
             // DrawCircle(m*cell_w, h/2, cell_h, RED);
