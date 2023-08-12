@@ -9,7 +9,7 @@
 
 #include <raylib.h>
 
-#define N (1<<15) // close to 20kHz
+#define N (1<<8) // 1<<15 is close to 20kHz
 
 #define FFT(out, in, n) fft(out, in, n, 1)
 

@@ -119,28 +119,35 @@ void draw_freqs(State *state) {
 
         if (state->frame_counter++ % state->smooth_factor == 0) {
             FFT(state->out, state->in, N);
-            // fftshift(out, N);
+            fftshift(state->out, N);
         }
 
         // calculate number of bins to have a logarithmic freq scale
-        float step = 1.059463094359; // from: https://pages.mtu.edu/~suits/NoteFreqCalcs.html
+        // float step = 1.059463094359; // from: https://pages.mtu.edu/~suits/NoteFreqCalcs.html
+        float step = 1;
+        float lowf = 0.0f;
         size_t m = 0; // number of bins
-        for (float f = 20.0f; (size_t)f < N; f *= step) {
+        // for (float f = 20.0f; (size_t)f < N; f *= step) {
+        for (float f = lowf; (size_t)f < N; f += step) {
             m++;
         }
 
-        float cell_w = (float)w/m;
+        float cell_w = (float)w/m > 1 ? (float)w/m : 1;
         float max_amp = max_amplitude(state->out, N);
 
         m = 0;
-        for (float f = 20.0f; (size_t)f < N; f *= step) {
-            float f1 = f*step;
+        // for (float f = 20.0f; (size_t)f < N; f *= step) {
+        for (float f = lowf; (size_t)f < N; f += step) {
+            // float f1 = f*step;
+            float f1 = f+step;
             float acc = 0.0f;
             // accumulate the freqs in the bin (between current f and f*step)
             for (size_t q = (size_t) f; q < N && q < (size_t) f1; ++q) {
-                acc += amplitude(state->out[q]);
+                // acc += amplitude(state->out[q]);
+                float b = amplitude(state->out[q]);
+                if (acc < b) acc = b;
             }
-            acc /= (size_t)f1 - (size_t)f + 1;
+            // acc /= (size_t)f1 - (size_t)f + 1;
             float t = acc/max_amp;
             float cell_h = h/2*t > 1 ? h/2*t : 1;
             DrawSimRect(m*cell_w, h/2, cell_w, cell_h, BLUE);
