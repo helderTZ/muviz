@@ -147,6 +147,11 @@ int main(int argc, char** argv) {
                     PauseMusicStream(state->music);
                 } else {
                     ResumeMusicStream(state->music);
+
+                    // if finished, replay
+                    if (GetMusicTimePlayed(state->music) == 0.0f) {
+                        PlayMusicStream(state->music);
+                    }
                 }
             }
 
