@@ -4,11 +4,11 @@ LIBS=`pkg-config --libs raylib` -lm -pthread -ldl -lglfw
 
 all: muviz libplugin.so
 
-muviz: main.c
+muviz: main.c plugin.h
 	${CC} -o $@ $< ${CFLAGS} ${LIBS}
 
-libplugin.so: plugin.c
-	${CC} -o $@ $^ -shared -fPIC ${CFLAGS} ${LIBS}
+libplugin.so: plugin.c plugin.h
+	${CC} -o $@ $< -shared -fPIC ${CFLAGS} ${LIBS}
 
 .PHONY: clean
 
