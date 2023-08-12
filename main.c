@@ -101,6 +101,13 @@ int main(int argc, char** argv) {
     const char *libplugin_filename = "./libplugin.so";
     void* libplugin = load_plugin(libplugin_filename);
 
+    const int screenWidth = 800;
+    const int screenHeight = 450;
+
+    InitWindow(screenWidth, screenHeight, "MUVIZ");
+    InitAudioDevice();
+    SetTargetFPS(60);
+
     State *state = plugin_init();
     G_state = state;
 
@@ -113,14 +120,6 @@ int main(int argc, char** argv) {
         PlayMusicStream(state->music);
         state->time_played = 0.0f;
     }
-
-    const int screenWidth = 800;
-    const int screenHeight = 450;
-
-    InitWindow(screenWidth, screenHeight, "MUVIZ");
-    InitAudioDevice();
-
-    SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
 
