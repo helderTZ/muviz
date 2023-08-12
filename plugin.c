@@ -1,5 +1,9 @@
 #include "plugin.h"
 
+// Updating *out* every other frame instead of every frame
+// makes the animation a bit more smooth
+#define SMOOTH_FACTOR 2
+
 void fft(float complex out[], float in[], size_t n, size_t stride);
 void fftshift(float complex z[], size_t n);
 float amplitude(float complex c);
@@ -39,7 +43,8 @@ void fftshift(float complex z[], size_t n) {
 }
 
 float amplitude(float complex c) {
-    return sqrt(creal(c)*creal(c) + cimag(c)*cimag(c));
+    // return sqrt(creal(c)*creal(c) + cimag(c)*cimag(c));
+    return cabsf(c);
 }
 
 float max_amplitude(float complex cs[], size_t n) {
@@ -118,8 +123,14 @@ void draw_freqs(State *state) {
         ClearBackground(BACKGROUND_COLOR);
 
         if (state->frame_counter++ % state->smooth_factor == 0) {
-            FFT(state->out, state->in, N);
-            fftshift(state->out, N);
+            // apply Hann window to remove phantom frequencies
+            for (size_t i = 0; i < N; ++i) {
+                float t = (float)i/N;
+                float hann = 0.5 - 0.5*cosf(2*PI*t);
+                state->in_windowed[i] = state->in[i]*hann;
+            }
+            FFT(state->out, state->in_windowed, N);
+            // fftshift(state->out, N);
         }
 
         // calculate number of bins to have a logarithmic freq scale
@@ -128,7 +139,7 @@ void draw_freqs(State *state) {
         float lowf = 0.0f;
         size_t m = 0; // number of bins
         // for (float f = 20.0f; (size_t)f < N; f *= step) {
-        for (float f = lowf; (size_t)f < N; f += step) {
+        for (float f = lowf; (size_t)f < N/2; f += step) {
             m++;
         }
 
@@ -137,12 +148,12 @@ void draw_freqs(State *state) {
 
         m = 0;
         // for (float f = 20.0f; (size_t)f < N; f *= step) {
-        for (float f = lowf; (size_t)f < N; f += step) {
+        for (float f = lowf; (size_t)f < N/2; f += step) {
             // float f1 = f*step;
             float f1 = f+step;
             float acc = 0.0f;
             // accumulate the freqs in the bin (between current f and f*step)
-            for (size_t q = (size_t) f; q < N && q < (size_t) f1; ++q) {
+            for (size_t q = (size_t) f; q < N/2 && q < (size_t) f1; ++q) {
                 // acc += amplitude(state->out[q]);
                 float b = amplitude(state->out[q]);
                 if (acc < b) acc = b;
@@ -162,7 +173,7 @@ void draw_freqs(State *state) {
 
 State* plugin_init() {
     State *state = (State*)calloc(1, sizeof(State));
-    state->smooth_factor = 2;
+    state->smooth_factor = SMOOTH_FACTOR;
 
     return state;
 }
@@ -174,6 +185,7 @@ void plugin_pre_reload(State* state, audio_callback_t audio_callback) {
 
 void plugin_post_reload(State* state, audio_callback_t audio_callback) {
     AttachAudioStreamProcessor(state->music.stream, audio_callback);
+    state->smooth_factor = SMOOTH_FACTOR;
     PlayMusicStream(state->music);
 }
 

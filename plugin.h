@@ -18,12 +18,11 @@
 typedef struct {
     char filename[100];
     float in[N];
+    float in_windowed[N];
     float complex out[N];
     Music music;
     float time_played;
     unsigned int frame_counter;
-    // Updating *out* every other frame instead of every frame
-    // makes the animation a bit more smooth
     unsigned int smooth_factor;
 } State;
 
