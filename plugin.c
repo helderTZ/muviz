@@ -2,7 +2,7 @@
 
 // Updating *out* every other frame instead of every frame
 // makes the animation a bit more smooth
-#define SMOOTH_FACTOR 2
+#define SMOOTH_FACTOR 1
 
 void fft(float complex out[], float in[], size_t n, size_t stride);
 void fftshift(float complex z[], size_t n);
@@ -42,9 +42,20 @@ void fftshift(float complex z[], size_t n) {
     }
 }
 
+void hann(float out[], float in[], size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        float t = (float)i/n-1;
+        float hann = 0.5 - 0.5*cosf(2*PI*t);
+        out[i] = in[i] * hann;
+    }
+}
+
 float amplitude(float complex c) {
-    // return sqrt(creal(c)*creal(c) + cimag(c)*cimag(c));
-    return cabsf(c);
+    float a = creal(c);
+    float b = cimag(c);
+    return sqrt(a*a + b*b);
+    // return (a*a + b*b);
+    // return logf(sqrt(a*a + b*b));
 }
 
 float max_amplitude(float complex cs[], size_t n) {
@@ -124,22 +135,16 @@ void draw_freqs(State *state) {
 
         if (state->frame_counter++ % state->smooth_factor == 0) {
             // apply Hann window to remove phantom frequencies
-            for (size_t i = 0; i < N; ++i) {
-                float t = (float)i/N;
-                float hann = 0.5 - 0.5*cosf(2*PI*t);
-                state->in_windowed[i] = state->in[i]*hann;
-            }
+            hann(state->in_windowed, state->in, N);
             FFT(state->out, state->in_windowed, N);
             // fftshift(state->out, N);
         }
 
         // calculate number of bins to have a logarithmic freq scale
-        // float step = 1.059463094359; // from: https://pages.mtu.edu/~suits/NoteFreqCalcs.html
-        float step = 1;
-        float lowf = 0.0f;
+        float step = 1.059463094359; // from: https://pages.mtu.edu/~suits/NoteFreqCalcs.html
+        float lowf = 1.0f;
         size_t m = 0; // number of bins
-        // for (float f = 20.0f; (size_t)f < N; f *= step) {
-        for (float f = lowf; (size_t)f < N/2; f += step) {
+        for (float f = lowf; (size_t)f < N/2; f = ceil(f*step)) {
             m++;
         }
 
@@ -147,19 +152,15 @@ void draw_freqs(State *state) {
         float max_amp = max_amplitude(state->out, N);
 
         m = 0;
-        // for (float f = 20.0f; (size_t)f < N; f *= step) {
-        for (float f = lowf; (size_t)f < N/2; f += step) {
-            // float f1 = f*step;
-            float f1 = f+step;
-            float acc = 0.0f;
+        for (float f = lowf; (size_t)f < N/2; f = ceil(f*step)) {
+            float f1 = ceil(f*step);
+            float a = 0.0f;
             // accumulate the freqs in the bin (between current f and f*step)
             for (size_t q = (size_t) f; q < N/2 && q < (size_t) f1; ++q) {
-                // acc += amplitude(state->out[q]);
                 float b = amplitude(state->out[q]);
-                if (acc < b) acc = b;
+                if (a < b) a = b;
             }
-            // acc /= (size_t)f1 - (size_t)f + 1;
-            float t = acc/max_amp;
+            float t = a/max_amp;
             float cell_h = h/2*t > 1 ? h/2*t : 1;
             DrawSimRect(m*cell_w, h/2, cell_w, cell_h, BLUE);
             // DrawCircle(m*cell_w, h/2, cell_h, RED);
