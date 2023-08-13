@@ -73,6 +73,15 @@ float max_amplitude(float complex cs[], size_t n) {
     return max_amp;
 }
 
+float max(float in[], size_t n) {
+    float max = 0.0f;
+    for (size_t i = 0; i < n; ++i) {
+        float absolute = fabs(in[i]);
+        if (max < absolute) max = absolute;
+    }
+    return max;
+}
+
 float get_time_played(Music music) {
     return GetMusicTimePlayed(music)/GetMusicTimeLength(music);
 }
@@ -170,6 +179,32 @@ void draw_freqs(State *state) {
             DrawSimRect(m*cell_w, h/2, cell_w, cell_h, BLUE);
             // DrawCircle(m*cell_w, h/2, cell_h, RED);
             m++;
+        }
+
+        // draw input signal
+        max_amp = max(state->in, N);
+
+        // get first bin
+        float avg_amp_in_bin_prev = 0.0f;
+        for (size_t q = 0; q < floor(N/w); ++q) {
+            avg_amp_in_bin_prev += state->in[q];
+        }
+        avg_amp_in_bin_prev /= (N/w);
+
+        for (size_t i = 2; i+1 < (size_t)w; i++) {
+            // there will be N/screenWidth bins
+            // draw the average of the samples in the same bin 
+            float avg_amp_in_bin_curr = 0.0f;
+            for (size_t q = 0; q < floor(N/w); ++q) {
+                avg_amp_in_bin_curr += state->in[i+q];
+            }
+            avg_amp_in_bin_curr /= (N/w);
+
+            DrawLine(i,   h/3 + (avg_amp_in_bin_prev/max_amp)*(h/3),
+                     i+1, h/3 + (avg_amp_in_bin_curr/max_amp)*(h/3),
+                     RED);
+
+            avg_amp_in_bin_prev = avg_amp_in_bin_curr;
         }
 
         draw_progress_bar(state);
