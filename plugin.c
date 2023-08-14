@@ -139,6 +139,22 @@ void DrawSimRect(int posX, int posY, int width, int height, Color color) {
     DrawRectangle(posX, posY         , width, height, color);
 }
 
+void draw_input_signal(State* state) {
+
+    int w = GetScreenWidth();
+    int h = GetScreenHeight();
+
+    float in[N];
+    memcpy(in, state->in, N*sizeof(float));
+    float max_amp = max(in, N);
+
+    for (size_t i = 2; i+1 < (size_t)w; i++) {
+        DrawLine(i,   h/3 + (in[i]  /max_amp)*(h/5),
+                 i+1, h/3 + (in[i+1]/max_amp)*(h/5),
+                 RED);
+    }
+}
+
 void draw_freqs(State *state) {
 
     int w = GetScreenWidth();
@@ -181,31 +197,7 @@ void draw_freqs(State *state) {
             m++;
         }
 
-        // draw input signal
-        max_amp = max(state->in, N);
-
-        // get first bin
-        float avg_amp_in_bin_prev = 0.0f;
-        for (size_t q = 0; q < floor(N/w); ++q) {
-            avg_amp_in_bin_prev += state->in[q];
-        }
-        avg_amp_in_bin_prev /= (N/w);
-
-        for (size_t i = 2; i+1 < (size_t)w; i++) {
-            // there will be N/screenWidth bins
-            // draw the average of the samples in the same bin 
-            float avg_amp_in_bin_curr = 0.0f;
-            for (size_t q = 0; q < floor(N/w); ++q) {
-                avg_amp_in_bin_curr += state->in[i+q];
-            }
-            avg_amp_in_bin_curr /= (N/w);
-
-            DrawLine(i,   h/3 + (avg_amp_in_bin_prev/max_amp)*(h/3),
-                     i+1, h/3 + (avg_amp_in_bin_curr/max_amp)*(h/3),
-                     RED);
-
-            avg_amp_in_bin_prev = avg_amp_in_bin_curr;
-        }
+        draw_input_signal(state);
 
         draw_progress_bar(state);
 
