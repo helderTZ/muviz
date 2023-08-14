@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <dlfcn.h>
+#include <libgen.h>
 
 #include "plugin.h"
 
@@ -112,7 +113,8 @@ int main(int argc, char** argv) {
     G_state = state;
 
     if (argc == 2) {
-        strncpy(state->filename, argv[1], 100);
+        char* filename = basename(argv[1]);
+        strncpy(state->filename, filename, 100);
         state->music = LoadMusicStream(argv[1]);
         state->music.looping = false;
         AttachAudioStreamProcessor(state->music.stream, audio_callback);
@@ -128,7 +130,8 @@ int main(int argc, char** argv) {
             StopMusicStream(state->music);
             UnloadMusicStream(state->music);
             state->music = LoadMusicStream(droppedFiles.paths[0]);
-            strncpy(state->filename, droppedFiles.paths[0], 100);
+            char* filename = basename(droppedFiles.paths[0]);
+            strncpy(state->filename, filename, 100);
             state->music.looping = false;
             AttachAudioStreamProcessor(state->music.stream, audio_callback);
             SetMusicVolume(state->music, 0.5);
